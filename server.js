@@ -9,7 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(cors({
-    origin: 'http://localhost/4000',
+    origin: 'https://casestudynapoles.netlify.app',
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type'],
 }));
