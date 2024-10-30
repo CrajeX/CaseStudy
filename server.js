@@ -39,21 +39,27 @@ const evaluateCSS = (cssContent) => {
 // Function to evaluate JavaScript content with severity-based scoring
 const evaluateJavaScript = async (jsContent) => {
     try {
-        const eslint = new ESLint({ useEslintrc: false });  // Set ESLint to avoid using an external config
+        // Initialize ESLint with a basic configuration to ensure it works in any environment
+        const eslint = new ESLint({
+            baseConfig: {
+                env: { browser: true, es2021: true },
+                parserOptions: { ecmaVersion: 12 },
+                rules: {} // Add any basic rules here if necessary
+            },
+            useEslintrc: false // Ensure it doesn’t rely on an external configuration
+        });
+
         const results = await eslint.lintText(jsContent);
 
         let score = 100;
-        const feedback = [];
-
         results[0].messages.forEach(msg => {
             const severity = msg.severity;
-            score -= 5 * severity; // Deduct more points for errors than warnings
-            feedback.push(`${msg.severity === 1 ? 'Warning' : 'Error'}: ${msg.message} at line ${msg.line}`);
+            score -= 5 * severity;
         });
 
-        return { score: Math.max(score, 0), feedback };
+        return { score: Math.max(score, 0) };
     } catch (error) {
-        console.error("Error in evaluateJavaScript:", error);
+        console.error("JavaScript evaluation error:", error.message || error);
         throw new Error("JavaScript evaluation failed.");
     }
 };
