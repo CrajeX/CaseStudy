@@ -24,7 +24,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import styles from 'C:\\Users\\USER\\job-board-app\\src\\styles.css';
-import './styles.css';
+// import './styles.css';
 const Navbar = ({ userType, onLogout }) => {
     return (
         <nav id="navbar">
