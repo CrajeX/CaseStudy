@@ -1,0 +1,19 @@
+{
+  "name": "scoring-backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.7.7",
+    "csslint": "^1.0.5",
+    "eslint": "^9.13.0",
+    "eslint-plugin-html": "^8.1.2",
+    "express": "^4.21.1"
+  }
+}
