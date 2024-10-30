@@ -134,7 +134,7 @@ const Portfolio = () => {
                                         <p>JavaScript Score: {submission.scores.javascript}</p>
                                     </>
                                 )}
-                                <h5>Feedback:</h5>
+                                {/* <h5>Feedback:</h5>
                                 {submission.feedback && (
                                     <div>
                                         <h6>HTML Feedback:</h6>
@@ -144,7 +144,7 @@ const Portfolio = () => {
                                         <h6>JavaScript Feedback:</h6>
                                         <ul>{submission.feedback.javascript.map((item, idx) => <li key={idx}>{item}</li>)}</ul>
                                     </div>
-                                )}
+                                )} */}
                                 <button onClick={() => handleDeleteSubmission(submission.id)}>Delete Submission</button>
                             </div>
                         )}
