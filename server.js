@@ -84,7 +84,7 @@ const fetchExternalFiles = async (links, baseURL) => {
             const response = await axios.get(url);
             contents.push(response.data);
         } catch (error) {
-            console.error(`Error fetching external file at ${link}:`, error);
+            console.error(`Error fetching external file at ${link}:`, error.message);
         }
     }
     return contents.join('\n');
@@ -126,7 +126,7 @@ app.post('/analyze', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error("Error fetching or analyzing the URL:", error);
+        console.error("Error fetching or analyzing the URL:", error.message);
         res.status(500).json({ error: "Failed to analyze the live demo link." });
     }
 });
