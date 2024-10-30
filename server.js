@@ -1,50 +1,93 @@
 const express = require('express');
 const axios = require('axios');
-const { ESLint } = require('eslint'); // ESLint for JavaScript analysis
+const { ESLint } = require('eslint');
 const csslint = require('csslint').CSSLint;
-const cors = require('cors'); // Make sure to import CORS
+const cors = require('cors');
+const cheerio = require('cheerio'); // For parsing HTML
 
 const app = express();
-const PORT = process.env.PORT || 4000; // Use the port from the environment variable
-
+const PORT = process.env.PORT || 4000;
 
 app.use(cors({
-    origin: 'https://casestudynapoles.netlify.app', // Allow requests from your frontend's origin
-    methods: ['GET', 'POST'], // Specify the HTTP methods you want to allow
-    allowedHeaders: ['Content-Type'], // Specify the headers you want to allow
+    origin: 'https://casestudynapoles.netlify.app',
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type'],
 }));
 
-app.use(express.json()); // Middleware to parse JSON request bodies
+app.use(express.json());
 
-// Function to evaluate HTML content
+// Function to evaluate HTML content with additional checks
 const evaluateHTML = (htmlContent) => {
     let score = 100;
-    if (!/<header>/.test(htmlContent)) score -= 10;
-    if (!/<main>/.test(htmlContent)) score -= 10;
-    if (!/<footer>/.test(htmlContent)) score -= 10;
-    if (!/<img[^>]+alt="[^"]*"/.test(htmlContent)) score -= 10;
-    return score;
+    const feedback = [];
+
+    if (!/<header>/.test(htmlContent)) {
+        score -= 10;
+        feedback.push("Missing <header> tag for semantic structure.");
+    }
+    if (!/<main>/.test(htmlContent)) {
+        score -= 10;
+        feedback.push("Missing <main> tag for semantic structure.");
+    }
+    if (!/<footer>/.test(htmlContent)) {
+        score -= 10;
+        feedback.push("Missing <footer> tag for semantic structure.");
+    }
+    if (!/<img[^>]+alt="[^"]*"/.test(htmlContent)) {
+        score -= 10;
+        feedback.push("Images are missing alt attributes for accessibility.");
+    }
+    if (!/<title>/.test(htmlContent)) {
+        score -= 5;
+        feedback.push("Missing <title> tag for page title.");
+    }
+    return { score, feedback };
 };
 
-// Function to evaluate CSS content
+// Function to evaluate CSS content with severity-based scoring
 const evaluateCSS = (cssContent) => {
     const results = csslint.verify(cssContent);
     let score = 100;
-    if (results.messages.length > 0) {
-        score -= results.messages.length * 2; // Subtract points per warning/error
-    }
-    return Math.max(score, 0);
+    const feedback = [];
+
+    results.messages.forEach(msg => {
+        const severity = msg.type === 'warning' ? 1 : 2;
+        score -= 2 * severity; // Deduct more points for errors than warnings
+        feedback.push(`${msg.type.toUpperCase()}: ${msg.message} at line ${msg.line}`);
+    });
+
+    return { score: Math.max(score, 0), feedback };
 };
 
-// Function to evaluate JavaScript content
+// Function to evaluate JavaScript content with severity-based scoring
 const evaluateJavaScript = async (jsContent) => {
     const eslint = new ESLint();
     const results = await eslint.lintText(jsContent);
     let score = 100;
+    const feedback = [];
+
     results[0].messages.forEach(msg => {
-        score -= 5; // Subtract points for each error/warning
+        const severity = msg.severity;
+        score -= 5 * severity; // Deduct more points for errors than warnings
+        feedback.push(`${msg.severity === 1 ? 'Warning' : 'Error'}: ${msg.message} at line ${msg.line}`);
     });
-    return Math.max(score, 0);
+
+    return { score: Math.max(score, 0), feedback };
+};
+
+// Helper function to fetch external files (CSS or JS) and return their content
+const fetchExternalFiles = async (links, baseURL) => {
+    const contents = [];
+    for (const link of links) {
+        try {
+            const url = new URL(link, baseURL).href;
+            const response = await axios.get(url);
+            contents.push(response.data);
+        } catch (error) {
+            console.error(`Error fetching external file at ${link}:`, error);
+        }
+    }
+    return contents.join('\n');
 };
 
 // POST endpoint to analyze the provided URL
@@ -52,18 +95,38 @@ app.post('/analyze', async (req, res) => {
     const { url } = req.body;
 
     try {
-        const { data } = await axios.get(url);
+        const { data: htmlData } = await axios.get(url);
+        const $ = cheerio.load(htmlData);
 
-        const htmlScore = evaluateHTML(data);
-        const cssContent = data.match(/<style>(.*?)<\/style>/s)?.[1] || "";
-        const cssScore = evaluateCSS(cssContent);
+        // HTML Analysis
+        const { score: htmlScore, feedback: htmlFeedback } = evaluateHTML(htmlData);
 
-        const jsContent = data.match(/<script>(.*?)<\/script>/s)?.[1] || "";
-        const jsScore = await evaluateJavaScript(jsContent);
+        // CSS Analysis
+        const cssLinks = $('link[rel="stylesheet"]').map((_, el) => $(el).attr('href')).get();
+        const inlineCSS = $('style').text();
+        const cssContent = inlineCSS + await fetchExternalFiles(cssLinks, url);
+        const { score: cssScore, feedback: cssFeedback } = evaluateCSS(cssContent);
 
-        res.json({ htmlScore, cssScore, jsScore });
+        // JavaScript Analysis
+        const jsLinks = $('script[src]').map((_, el) => $(el).attr('src')).get();
+        const inlineJS = $('script:not([src])').text();
+        const jsContent = inlineJS + await fetchExternalFiles(jsLinks, url);
+        const { score: jsScore, feedback: jsFeedback } = await evaluateJavaScript(jsContent);
+
+        res.json({
+            scores: {
+                html: htmlScore,
+                css: cssScore,
+                javascript: jsScore,
+            },
+            feedback: {
+                html: htmlFeedback,
+                css: cssFeedback,
+                javascript: jsFeedback,
+            }
+        });
     } catch (error) {
-        console.error("Error fetching the URL:", error); // Log the error for debugging
+        console.error("Error fetching or analyzing the URL:", error);
         res.status(500).json({ error: "Failed to analyze the live demo link." });
     }
 });
