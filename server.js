@@ -36,15 +36,26 @@ const evaluateCSS = (cssContent) => {
     return Math.max(score, 0);
 };
 
+// Function to evaluate JavaScript content with severity-based scoring
 const evaluateJavaScript = async (jsContent) => {
-    const eslint = new ESLint();
-    const results = await eslint.lintText(jsContent);
-    let score = 100;
-    results[0].messages.forEach(msg => {
-        const severity = msg.severity;
-        score -= 5 * severity;
-    });
-    return Math.max(score, 0);
+    try {
+        const eslint = new ESLint({ useEslintrc: false });  // Set ESLint to avoid using an external config
+        const results = await eslint.lintText(jsContent);
+
+        let score = 100;
+        const feedback = [];
+
+        results[0].messages.forEach(msg => {
+            const severity = msg.severity;
+            score -= 5 * severity; // Deduct more points for errors than warnings
+            feedback.push(`${msg.severity === 1 ? 'Warning' : 'Error'}: ${msg.message} at line ${msg.line}`);
+        });
+
+        return { score: Math.max(score, 0), feedback };
+    } catch (error) {
+        console.error("Error in evaluateJavaScript:", error);
+        throw new Error("JavaScript evaluation failed.");
+    }
 };
 
 const fetchExternalFiles = async (links, baseURL) => {
