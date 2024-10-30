@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 4000; // Use the port from the environment vari
 
 
 app.use(cors({
-    origin: 'https://casestudynapoles.netlify.app/', // Allow requests from your frontend's origin
+    origin: 'https://casestudynapoles.netlify.app', // Allow requests from your frontend's origin
     methods: ['GET', 'POST'], // Specify the HTTP methods you want to allow
     allowedHeaders: ['Content-Type'], // Specify the headers you want to allow
 }));

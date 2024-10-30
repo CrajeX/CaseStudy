@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, getDocs, doc, deleteDoc } from 'firebase/firestore';
 import { auth } from '../firebase';
-import axios from 'axios'; // Ensure axios is imported
+import axios from 'axios';
 
 const Portfolio = () => {
     const [liveDemoLink, setLiveDemoLink] = useState('');
@@ -12,14 +12,17 @@ const Portfolio = () => {
 
     // Fetch existing submissions from Firestore
     const fetchSubmissions = async () => {
-        const submissionsRef = collection(doc(db, 'applicants', auth.currentUser.uid), 'submissions');
-        const snapshot = await getDocs(submissionsRef);
-        const submissionsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-        // Filter out submissions without a live demo link
-        const validSubmissions = submissionsData.filter(submission => submission.liveDemoLink);
-        
-        setSubmissions(validSubmissions);
+        try {
+            const submissionsRef = collection(doc(db, 'applicants', auth.currentUser.uid), 'submissions');
+            const snapshot = await getDocs(submissionsRef);
+            const submissionsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            // Filter out submissions without a live demo link
+            const validSubmissions = submissionsData.filter(submission => submission.liveDemoLink);
+            setSubmissions(validSubmissions);
+        } catch (error) {
+            console.error("Error fetching submissions:", error);
+        }
     };
 
     useEffect(() => {
@@ -27,57 +30,60 @@ const Portfolio = () => {
     }, []);
 
     const handleSubmission = async () => {
-        // Check if the liveDemoLink is not empty
         if (!liveDemoLink.trim()) {
-            alert("Please enter a valid live demo link."); // Inform the user
-            return; // Exit if the link is invalid
+            alert("Please enter a valid live demo link.");
+            return;
         }
-    
-        const newPayload = {
-            url: liveDemoLink,  // Ensure this matches your backend's expected structure
-        };
-    
+
+        const newPayload = { url: liveDemoLink };
+
         const submissionsRef = collection(doc(db, 'applicants', auth.currentUser.uid), 'submissions');
-    
+
         try {
-            // Sending request to the backend to analyze the demo link
-            const response = await axios.post('https://casestudynapoles.netlify.app/analyze', newPayload);
-            console.log("Response from backend:", response.data); // Check the response from the server
-            
-            // Construct new submission with scores from the response
-            const newSubmission = {
-                liveDemoLink,
-                videoFile: videoFile ? videoFile.name : null,
-                timestamp: new Date(),
-                scores: {
-                    html: response.data.htmlScore,
-                    css: response.data.cssScore,
-                    javascript: response.data.jsScore,
-                },
-            };
-    
-            // Add the submission to Firestore
-            await addDoc(submissionsRef, newSubmission);
-            fetchSubmissions(); // Fetch updated submissions after adding
-    
-            // Clear the form fields
-            setLiveDemoLink('');
-            setVideoFile(null);
+            const response = await axios.post('https://casestudy-10.onrender.com/analyze', newPayload);
+
+            // Validate response structure
+            if (response?.data?.htmlScore && response?.data?.cssScore && response?.data?.jsScore) {
+                const newSubmission = {
+                    liveDemoLink,
+                    videoFile: videoFile ? videoFile.name : null,
+                    timestamp: new Date(),
+                    scores: {
+                        html: response.data.htmlScore,
+                        css: response.data.cssScore,
+                        javascript: response.data.jsScore,
+                    },
+                };
+
+                // Add the submission to Firestore
+                await addDoc(submissionsRef, newSubmission);
+                fetchSubmissions(); // Fetch updated submissions after adding
+
+                // Clear the form fields
+                setLiveDemoLink('');
+                setVideoFile(null);
+            } else {
+                console.error("Unexpected response format:", response.data);
+                alert("Received unexpected data from the backend.");
+            }
         } catch (error) {
-            console.error("Error submitting the demo link:", error); // Log any error from the request
-            alert("There was an error processing your request. Please check your link and try again."); // Inform the user of the error
+            console.error("Error submitting the demo link:", error);
+            alert("There was an error processing your request. Please check your link and try again.");
         }
     };
-    
 
     const toggleExpandSubmission = (submissionId) => {
         setExpandedSubmission(expandedSubmission === submissionId ? null : submissionId);
     };
 
     const handleDeleteSubmission = async (submissionId) => {
-        const submissionRef = doc(db, 'applicants', auth.currentUser.uid, 'submissions', submissionId);
-        await deleteDoc(submissionRef);
-        fetchSubmissions();
+        try {
+            const submissionRef = doc(db, 'applicants', auth.currentUser.uid, 'submissions', submissionId);
+            await deleteDoc(submissionRef);
+            fetchSubmissions();
+        } catch (error) {
+            console.error("Error deleting submission:", error);
+        }
     };
 
     return (
