@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase';
+import { db, storage } from '../firebase';
 import { collection, addDoc, getDocs, doc, deleteDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth } from '../firebase';
 import axios from 'axios';
 
@@ -10,13 +11,12 @@ const Portfolio = () => {
     const [submissions, setSubmissions] = useState([]);
     const [expandedSubmission, setExpandedSubmission] = useState(null);
 
+    // Fetch existing submissions from Firestore
     const fetchSubmissions = async () => {
         try {
             const submissionsRef = collection(doc(db, 'applicants', auth.currentUser.uid), 'submissions');
             const snapshot = await getDocs(submissionsRef);
             const submissionsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            
-            // Filter out submissions without a live demo link
             const validSubmissions = submissionsData.filter(submission => submission.liveDemoLink);
             setSubmissions(validSubmissions);
         } catch (error) {
@@ -27,6 +27,14 @@ const Portfolio = () => {
     useEffect(() => {
         fetchSubmissions(); // Fetch submissions when the component mounts
     }, []);
+
+    // Upload video file to Firebase Storage if provided
+    const uploadVideoFile = async () => {
+        if (!videoFile) return null;
+        const videoRef = ref(storage, `videos/${auth.currentUser.uid}/${videoFile.name}`);
+        await uploadBytes(videoRef, videoFile);
+        return await getDownloadURL(videoRef);
+    };
 
     const handleSubmission = async () => {
         if (!liveDemoLink.trim()) {
@@ -40,20 +48,21 @@ const Portfolio = () => {
         try {
             const response = await axios.post('https://casestudy-10.onrender.com/analyze', newPayload);
 
-            // Validate response structure
-            if (response?.data?.scores) {
+            const { scores, feedback } = response.data;
+            if (scores?.html && scores?.css && scores?.javascript) {
+                const videoURL = await uploadVideoFile();
+
                 const newSubmission = {
                     liveDemoLink,
-                    videoFile: videoFile ? videoFile.name : null,
+                    videoFile: videoURL,
                     timestamp: new Date(),
-                    scores: response.data.scores,
+                    scores,
+                    feedback,
                 };
 
-                // Add the submission to Firestore
                 await addDoc(submissionsRef, newSubmission);
                 fetchSubmissions(); // Fetch updated submissions after adding
 
-                // Clear the form fields
                 setLiveDemoLink('');
                 setVideoFile(null);
             } else {
@@ -124,6 +133,17 @@ const Portfolio = () => {
                                         <p>CSS Score: {submission.scores.css}</p>
                                         <p>JavaScript Score: {submission.scores.javascript}</p>
                                     </>
+                                )}
+                                <h5>Feedback:</h5>
+                                {submission.feedback && (
+                                    <div>
+                                        <h6>HTML Feedback:</h6>
+                                        <ul>{submission.feedback.html.map((item, idx) => <li key={idx}>{item}</li>)}</ul>
+                                        <h6>CSS Feedback:</h6>
+                                        <ul>{submission.feedback.css.map((item, idx) => <li key={idx}>{item}</li>)}</ul>
+                                        <h6>JavaScript Feedback:</h6>
+                                        <ul>{submission.feedback.javascript.map((item, idx) => <li key={idx}>{item}</li>)}</ul>
+                                    </div>
                                 )}
                                 <button onClick={() => handleDeleteSubmission(submission.id)}>Delete Submission</button>
                             </div>
