@@ -16,12 +16,18 @@ app.use(cors({
 
 app.use(express.json());
 
-// Function to evaluate HTML content with GitHub best practices
+// Helper function to fetch external files and combine content
+const fetchExternalFiles = async (links, baseURL) => {
+    const requests = links.map(link => axios.get(new URL(link, baseURL).href).then(res => res.data).catch(() => ''));
+    const responses = await Promise.all(requests);
+    return responses.join('\n'); // Combine all external content into a single string
+};
+
+// Function to analyze HTML for structure, accessibility, and GitHub best practices
 const evaluateHTML = (htmlContent) => {
     const feedback = [];
     let score = 100;
 
-    // Mandatory tags for structural clarity and SEO
     const requiredTags = ['<header>', '<main>', '<footer>', '<title>'];
     requiredTags.forEach(tag => {
         if (!new RegExp(tag).test(htmlContent)) {
@@ -30,13 +36,11 @@ const evaluateHTML = (htmlContent) => {
         }
     });
 
-    // Accessibility checks
     if (!/<img[^>]+alt="[^"]*"/.test(htmlContent)) {
         score -= 10;
         feedback.push("Images are missing alt attributes for accessibility.");
     }
 
-    // Semantic structure
     const htmlLines = htmlContent.split('\n').length;
     if (htmlLines > 200) {
         score -= 5;
@@ -46,7 +50,7 @@ const evaluateHTML = (htmlContent) => {
     return { score, feedback };
 };
 
-// Function to evaluate CSS content with enhanced scoring
+// Function to evaluate CSS content with scoring based on quality and maintainability
 const evaluateCSS = (cssContent) => {
     const results = CSSLint.verify(cssContent);
     const feedback = [];
@@ -54,11 +58,10 @@ const evaluateCSS = (cssContent) => {
 
     results.messages.forEach(msg => {
         const severity = msg.type === 'warning' ? 1 : 2;
-        score -= severity * 3;  // Enhanced penalty for errors
+        score -= severity * 3;
         feedback.push(`${msg.type.toUpperCase()}: ${msg.message} at line ${msg.line}`);
     });
 
-    // Maintainability check
     if (cssContent.split('\n').length > 300) {
         score -= 10;
         feedback.push("CSS file is large; consider modularizing styles.");
@@ -67,21 +70,19 @@ const evaluateCSS = (cssContent) => {
     return { score: Math.max(score, 0), feedback };
 };
 
-// Function to evaluate JavaScript content with complexity analysis
+// Function to evaluate JavaScript content with code complexity analysis
 const evaluateJavaScript = async (jsContent) => {
     const eslint = new ESLint();
     const [result] = await eslint.lintText(jsContent);
     const feedback = [];
     let score = 100;
 
-    // Linting messages for warnings and errors
     result.messages.forEach(msg => {
         const severity = msg.severity;
-        score -= severity * 5;  // Enhanced deduction
+        score -= severity * 5;
         feedback.push(`${severity === 1 ? 'Warning' : 'Error'}: ${msg.message} at line ${msg.line}`);
     });
 
-    // Complexity check (based on line count and function length)
     const jsLines = jsContent.split('\n').length;
     const functionLines = jsContent.match(/function\s+.*\{[^}]*\}/g) || [];
     if (jsLines > 400) {
@@ -96,14 +97,7 @@ const evaluateJavaScript = async (jsContent) => {
     return { score: Math.max(score, 0), feedback };
 };
 
-// Helper function to fetch external files (CSS or JS) and return their content
-const fetchExternalFiles = async (links, baseURL) => {
-    const requests = links.map(link => axios.get(new URL(link, baseURL).href).then(res => res.data).catch(() => ''));
-    const responses = await Promise.all(requests);
-    return responses.join('\n');
-};
-
-// POST endpoint to analyze the provided GitHub live demo URL
+// POST endpoint to analyze a live GitHub demo URL
 app.post('/analyze', async (req, res) => {
     const { url } = req.body;
 
@@ -147,5 +141,4 @@ app.post('/analyze', async (req, res) => {
     }
 });
 
-// Start the server
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
