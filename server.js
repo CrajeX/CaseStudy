@@ -16,10 +16,20 @@ app.use(cors({
 
 app.use(express.json());
 
+// Helper function to fetch external files (CSS or JS) reliably
 const fetchExternalFiles = async (links, baseURL) => {
-    const requests = links.map(link => axios.get(new URL(link, baseURL).href).then(res => res.data).catch(() => ''));
-    const responses = await Promise.all(requests);
-    return responses.join('\n');
+    const contents = [];
+    for (const link of links) {
+        try {
+            const url = new URL(link, baseURL).href; // Resolves relative URLs
+            const response = await axios.get(url);
+            contents.push(response.data);
+            console.log(`Fetched content from: ${url}`); // Logging successful fetch
+        } catch (error) {
+            console.error(`Error fetching external file at ${link}:`, error.message);
+        }
+    }
+    return contents.join('\n'); // Combine all external file content
 };
 
 // HTML evaluation with expanded checks
@@ -105,7 +115,6 @@ const evaluateJavaScript = async (jsContent) => {
     return { score: Math.max(score, 0), feedback };
 };
 
-// POST endpoint to analyze the provided GitHub live demo URL
 app.post('/analyze', async (req, res) => {
     const { url } = req.body;
 
@@ -121,14 +130,16 @@ app.post('/analyze', async (req, res) => {
         // HTML Analysis
         const { score: htmlScore, feedback: htmlFeedback } = evaluateHTML(htmlData);
 
-        // CSS Analysis
+        // CSS Analysis: Fetch inline and external CSS
         const cssLinks = $('link[rel="stylesheet"]').map((_, el) => $(el).attr('href')).get();
-        const cssContent = $('style').text() + await fetchExternalFiles(cssLinks, url);
+        const inlineCSS = $('style').text();
+        const cssContent = inlineCSS + await fetchExternalFiles(cssLinks, url);
         const { score: cssScore, feedback: cssFeedback } = evaluateCSS(cssContent);
 
-        // JavaScript Analysis
+        // JavaScript Analysis: Fetch inline and external JS
         const jsLinks = $('script[src]').map((_, el) => $(el).attr('src')).get();
-        const jsContent = $('script:not([src])').text() + await fetchExternalFiles(jsLinks, url);
+        const inlineJS = $('script:not([src])').text();
+        const jsContent = inlineJS + await fetchExternalFiles(jsLinks, url);
         const { score: jsScore, feedback: jsFeedback } = await evaluateJavaScript(jsContent);
 
         res.json({
@@ -148,5 +159,6 @@ app.post('/analyze', async (req, res) => {
         res.status(500).json({ error: "Failed to analyze the live demo link." });
     }
 });
+
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
