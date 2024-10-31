@@ -1,7 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const { ESLint } = require('eslint');
-const { CSSLint } = require('csslint');
+const csslint = require('csslint').CSSLint;
 const cors = require('cors');
 const cheerio = require('cheerio');
 
@@ -16,43 +16,49 @@ app.use(cors({
 
 app.use(express.json());
 
-// Helper function to fetch external files and combine content
 const fetchExternalFiles = async (links, baseURL) => {
     const requests = links.map(link => axios.get(new URL(link, baseURL).href).then(res => res.data).catch(() => ''));
     const responses = await Promise.all(requests);
-    return responses.join('\n'); // Combine all external content into a single string
+    return responses.join('\n');
 };
 
-// Function to analyze HTML for structure, accessibility, and GitHub best practices
+// HTML evaluation with expanded checks
 const evaluateHTML = (htmlContent) => {
     const feedback = [];
     let score = 100;
 
-    const requiredTags = ['<header>', '<main>', '<footer>', '<title>'];
+    // Semantic tags
+    const requiredTags = ['<header>', '<main>', '<footer>', '<title>', '<meta name="description">'];
     requiredTags.forEach(tag => {
         if (!new RegExp(tag).test(htmlContent)) {
             score -= 10;
-            feedback.push(`Missing ${tag} tag for improved structure.`);
+            feedback.push(`Missing ${tag} for improved structure or SEO.`);
         }
     });
 
+    // Accessibility and deprecated tags
     if (!/<img[^>]+alt="[^"]*"/.test(htmlContent)) {
         score -= 10;
         feedback.push("Images are missing alt attributes for accessibility.");
     }
+    if (/(<font>|<center>|<marquee>)/.test(htmlContent)) {
+        score -= 15;
+        feedback.push("Deprecated tags found (e.g., <font>, <center>); please remove.");
+    }
 
+    // HTML length and readability
     const htmlLines = htmlContent.split('\n').length;
     if (htmlLines > 200) {
         score -= 5;
-        feedback.push("HTML document is large; consider refactoring for readability.");
+        feedback.push("HTML file is large; consider splitting into partials.");
     }
 
     return { score, feedback };
 };
 
-// Function to evaluate CSS content with scoring based on quality and maintainability
+// Enhanced CSS evaluation for modularity and best practices
 const evaluateCSS = (cssContent) => {
-    const results = CSSLint.verify(cssContent);
+    const results = csslint.verify(cssContent);
     const feedback = [];
     let score = 100;
 
@@ -62,7 +68,11 @@ const evaluateCSS = (cssContent) => {
         feedback.push(`${msg.type.toUpperCase()}: ${msg.message} at line ${msg.line}`);
     });
 
-    if (cssContent.split('\n').length > 300) {
+    if (cssContent.includes('!important')) {
+        score -= 10;
+        feedback.push("Avoid using '!important' in CSS.");
+    }
+    if (cssContent.length > 5000) {
         score -= 10;
         feedback.push("CSS file is large; consider modularizing styles.");
     }
@@ -70,7 +80,7 @@ const evaluateCSS = (cssContent) => {
     return { score: Math.max(score, 0), feedback };
 };
 
-// Function to evaluate JavaScript content with code complexity analysis
+// Enhanced JavaScript evaluation
 const evaluateJavaScript = async (jsContent) => {
     const eslint = new ESLint();
     const [result] = await eslint.lintText(jsContent);
@@ -83,21 +93,19 @@ const evaluateJavaScript = async (jsContent) => {
         feedback.push(`${severity === 1 ? 'Warning' : 'Error'}: ${msg.message} at line ${msg.line}`);
     });
 
-    const jsLines = jsContent.split('\n').length;
-    const functionLines = jsContent.match(/function\s+.*\{[^}]*\}/g) || [];
-    if (jsLines > 400) {
+    if (jsContent.split('\n').length > 400) {
         score -= 10;
-        feedback.push("JavaScript file is large; consider refactoring or modularizing.");
+        feedback.push("JavaScript file is large; consider modularizing.");
     }
-    if (functionLines.some(fn => fn.split('\n').length > 50)) {
-        score -= 10;
-        feedback.push("Consider reducing function length to improve readability and maintainability.");
+    if ((jsContent.match(/console\./g) || []).length > 0) {
+        score -= 5;
+        feedback.push("Avoid using console logs in production code.");
     }
 
     return { score: Math.max(score, 0), feedback };
 };
 
-// POST endpoint to analyze a live GitHub demo URL
+// POST endpoint to analyze the provided GitHub live demo URL
 app.post('/analyze', async (req, res) => {
     const { url } = req.body;
 
