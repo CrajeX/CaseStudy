@@ -16,20 +16,26 @@ app.use(cors({
 
 app.use(express.json());
 
-// Helper function to fetch external files (CSS or JS) reliably
 const fetchExternalFiles = async (links, baseURL) => {
     const contents = [];
     for (const link of links) {
         try {
-            const url = new URL(link, baseURL).href; // Resolves relative URLs
-            const response = await axios.get(url);
-            contents.push(response.data);
-            console.log(`Fetched content from: ${url}`); // Logging successful fetch
+            const url = new URL(link, baseURL).href; // Ensures absolute URL
+            console.log(`Attempting to fetch: ${url}`); // Log URL
+            const response = await axios.get(url, { timeout: 5000 });
+            
+            // Check if content exists
+            if (response.data && response.data.length > 0) {
+                contents.push(response.data);
+                console.log(`Fetched content from: ${url}`); // Confirm success
+            } else {
+                console.warn(`Empty content received from: ${url}`);
+            }
         } catch (error) {
-            console.error(`Error fetching external file at ${link}:`, error.message);
+            console.error(`Failed to fetch external file at ${link}:`, error.message);
         }
     }
-    return contents.join('\n'); // Combine all external file content
+    return contents.join('\n'); // Join all fetched content
 };
 
 // HTML evaluation with expanded checks
@@ -129,18 +135,20 @@ app.post('/analyze', async (req, res) => {
 
         // HTML Analysis
         const { score: htmlScore, feedback: htmlFeedback } = evaluateHTML(htmlData);
-
-        // CSS Analysis: Fetch inline and external CSS
+        // CSS Analysis
         const cssLinks = $('link[rel="stylesheet"]').map((_, el) => $(el).attr('href')).get();
         const inlineCSS = $('style').text();
         const cssContent = inlineCSS + await fetchExternalFiles(cssLinks, url);
+        console.log("Combined CSS Content Length:", cssContent.length); // Log CSS content length
         const { score: cssScore, feedback: cssFeedback } = evaluateCSS(cssContent);
 
-        // JavaScript Analysis: Fetch inline and external JS
+        // JavaScript Analysis
         const jsLinks = $('script[src]').map((_, el) => $(el).attr('src')).get();
         const inlineJS = $('script:not([src])').text();
         const jsContent = inlineJS + await fetchExternalFiles(jsLinks, url);
+        console.log("Combined JavaScript Content Length:", jsContent.length); // Log JS content length
         const { score: jsScore, feedback: jsFeedback } = await evaluateJavaScript(jsContent);
+
 
         res.json({
             scores: {
