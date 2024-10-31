@@ -3,11 +3,12 @@ const axios = require('axios');
 const { ESLint } = require('eslint');
 const csslint = require('csslint').CSSLint;
 const cors = require('cors');
-const cheerio = require('cheerio'); // For parsing HTML
+const cheerio = require('cheerio');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// CORS Configuration
 app.use(cors({
     origin: 'https://casestudynapoles.netlify.app',
     methods: ['GET', 'POST'],
@@ -84,7 +85,7 @@ const fetchExternalFiles = async (links, baseURL) => {
             const response = await axios.get(url);
             contents.push(response.data);
         } catch (error) {
-            console.error(`Error fetching external file at ${link}:`, error.message);
+            console.error(`Error fetching external file at ${link}:`, error);
         }
     }
     return contents.join('\n');
@@ -95,6 +96,12 @@ app.post('/analyze', async (req, res) => {
     const { url } = req.body;
 
     try {
+        // Verify that the URL is reachable
+        const { status } = await axios.head(url);
+        if (status !== 200) {
+            return res.status(400).json({ error: "The provided URL is not reachable." });
+        }
+
         const { data: htmlData } = await axios.get(url);
         const $ = cheerio.load(htmlData);
 
@@ -126,7 +133,7 @@ app.post('/analyze', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error("Error fetching or analyzing the URL:", error.message);
+        console.error("Error fetching or analyzing the URL:", error);
         res.status(500).json({ error: "Failed to analyze the live demo link." });
     }
 });

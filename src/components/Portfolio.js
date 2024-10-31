@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db, storage } from '../firebase';
+import { db } from '../firebase';
 import { collection, addDoc, getDocs, doc, deleteDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth } from '../firebase';
 import axios from 'axios';
 
@@ -10,9 +9,12 @@ const Portfolio = () => {
     const [videoFile, setVideoFile] = useState(null);
     const [submissions, setSubmissions] = useState([]);
     const [expandedSubmission, setExpandedSubmission] = useState(null);
+    const [loading, setLoading] = useState(false); // Loading state for submissions
+    const [submissionLoading, setSubmissionLoading] = useState(false); // Loading state for submission
 
     // Fetch existing submissions from Firestore
     const fetchSubmissions = async () => {
+        setLoading(true);
         try {
             const submissionsRef = collection(doc(db, 'applicants', auth.currentUser.uid), 'submissions');
             const snapshot = await getDocs(submissionsRef);
@@ -21,20 +23,14 @@ const Portfolio = () => {
             setSubmissions(validSubmissions);
         } catch (error) {
             console.error("Error fetching submissions:", error);
+        } finally {
+            setLoading(false);
         }
     };
 
     useEffect(() => {
         fetchSubmissions(); // Fetch submissions when the component mounts
     }, []);
-
-    // Upload video file to Firebase Storage if provided
-    const uploadVideoFile = async () => {
-        if (!videoFile) return null;
-        const videoRef = ref(storage, `videos/${auth.currentUser.uid}/${videoFile.name}`);
-        await uploadBytes(videoRef, videoFile);
-        return await getDownloadURL(videoRef);
-    };
 
     const handleSubmission = async () => {
         if (!liveDemoLink.trim()) {
@@ -45,24 +41,29 @@ const Portfolio = () => {
         const newPayload = { url: liveDemoLink };
         const submissionsRef = collection(doc(db, 'applicants', auth.currentUser.uid), 'submissions');
 
+        setSubmissionLoading(true); // Start loading
+
         try {
-            const response = await axios.post('https://casestudy-10.onrender.com/analyze', newPayload);
+            const response = await axios.post('https://casestudy-19cm.onrender.com/analyze', newPayload);
 
-            const { scores, feedback } = response.data;
-            if (scores?.html && scores?.css && scores?.javascript) {
-                const videoURL = await uploadVideoFile();
-
+            // Validate response structure
+            if (response?.data?.scores) {
                 const newSubmission = {
                     liveDemoLink,
-                    videoFile: videoURL,
+                    videoFile: videoFile ? videoFile.name : null,
                     timestamp: new Date(),
-                    scores,
-                    feedback,
+                    scores: {
+                        html: response.data.scores.html,
+                        css: response.data.scores.css,
+                        javascript: response.data.scores.javascript,
+                    },
                 };
 
+                // Add the submission to Firestore
                 await addDoc(submissionsRef, newSubmission);
                 fetchSubmissions(); // Fetch updated submissions after adding
 
+                // Clear the form fields
                 setLiveDemoLink('');
                 setVideoFile(null);
             } else {
@@ -72,6 +73,8 @@ const Portfolio = () => {
         } catch (error) {
             console.error("Error submitting the demo link:", error);
             alert("There was an error processing your request. Please check your link and try again.");
+        } finally {
+            setSubmissionLoading(false); // Stop loading
         }
     };
 
@@ -80,12 +83,14 @@ const Portfolio = () => {
     };
 
     const handleDeleteSubmission = async (submissionId) => {
-        try {
-            const submissionRef = doc(db, 'applicants', auth.currentUser.uid, 'submissions', submissionId);
-            await deleteDoc(submissionRef);
-            fetchSubmissions();
-        } catch (error) {
-            console.error("Error deleting submission:", error);
+        if (window.confirm("Are you sure you want to delete this submission?")) {
+            try {
+                const submissionRef = doc(db, 'applicants', auth.currentUser.uid, 'submissions', submissionId);
+                await deleteDoc(submissionRef);
+                fetchSubmissions();
+            } catch (error) {
+                console.error("Error deleting submission:", error);
+            }
         }
     };
 
@@ -103,54 +108,37 @@ const Portfolio = () => {
                 accept="video/*"
                 onChange={(e) => setVideoFile(e.target.files[0])}
             />
-            <button onClick={handleSubmission}>Add Submission</button>
+            <button onClick={handleSubmission} disabled={submissionLoading}>
+                {submissionLoading ? "Submitting..." : "Add Submission"}
+            </button>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginTop: '20px' }}>
-                {submissions.map(submission => (
-                    <div
-                        key={submission.id}
-                        style={{
-                            border: '1px solid #ddd',
-                            borderRadius: '8px',
-                            padding: '10px',
-                            width: '200px',
-                            cursor: 'pointer',
-                            background: expandedSubmission === submission.id ? '#f9f9f9' : '#fff',
-                            transition: 'background 0.3s',
-                        }}
-                        onClick={() => toggleExpandSubmission(submission.id)}
-                    >
-                        <h4>Submission</h4>
-                        <p style={{ overflowWrap: 'break-word', wordBreak: 'break-all', margin: '0' }}>
-                            Live Demo Link: <a href={submission.liveDemoLink} target="_blank" rel="noopener noreferrer">{submission.liveDemoLink}</a>
-                        </p>
-                        {expandedSubmission === submission.id && (
-                            <div>
-                                <h5>Scores:</h5>
-                                {submission.scores && (
-                                    <>
-                                        <p>HTML Score: {submission.scores.html}</p>
-                                        <p>CSS Score: {submission.scores.css}</p>
-                                        <p>JavaScript Score: {submission.scores.javascript}</p>
-                                    </>
-                                )}
-                                <h5>Feedback:</h5>
-                                {submission.feedback && (
+            {loading ? (
+                <p>Loading submissions...</p>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {submissions.length === 0 ? (
+                        <p>No submissions found.</p>
+                    ) : (
+                        submissions.map((submission) => (
+                            <div key={submission.id} style={{ border: '1px solid #ccc', margin: '10px 0', padding: '10px' }}>
+                                <h4>{submission.liveDemoLink}</h4>
+                                {expandedSubmission === submission.id ? (
                                     <div>
-                                        <h6>HTML Feedback:</h6>
-                                        <ul>{submission.feedback.html.map((item, idx) => <li key={idx}>{item}</li>)}</ul>
-                                        <h6>CSS Feedback:</h6>
-                                        <ul>{submission.feedback.css.map((item, idx) => <li key={idx}>{item}</li>)}</ul>
-                                        <h6>JavaScript Feedback:</h6>
-                                        <ul>{submission.feedback.javascript.map((item, idx) => <li key={idx}>{item}</li>)}</ul>
+                                        <p>Scores:</p>
+                                        <p>HTML: {submission.scores.html}</p>
+                                        <p>CSS: {submission.scores.css}</p>
+                                        <p>JavaScript: {submission.scores.javascript}</p>
+                                        <button onClick={() => toggleExpandSubmission(submission.id)}>Show Less</button>
                                     </div>
+                                ) : (
+                                    <button onClick={() => toggleExpandSubmission(submission.id)}>View Scores</button>
                                 )}
-                                <button onClick={() => handleDeleteSubmission(submission.id)}>Delete Submission</button>
+                                <button onClick={() => handleDeleteSubmission(submission.id)}>Delete</button>
                             </div>
-                        )}
-                    </div>
-                ))}
-            </div>
+                        ))
+                    )}
+                </div>
+            )}
         </div>
     );
 };
