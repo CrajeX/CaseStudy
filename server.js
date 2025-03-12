@@ -9,7 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(cors({
-    origin: 'https://casestudynapoles.netlify.app',
+    origin: ['https://skifolio.netlify.app', 'http://localhost:3000'], 
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type'],
 }));
@@ -170,3 +170,4 @@ app.post('/analyze', async (req, res) => {
 
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
